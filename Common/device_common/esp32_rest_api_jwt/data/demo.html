@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Device Manager - Demo Mode</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .demo-banner {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 1001;
+        }
+        
+        .demo-banner button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            margin-left: 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        
+        .demo-banner button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-banner">
+        🧪 DEMO MODE - Using Mock API Data
+        <button onclick="toggleMockMode()">Toggle Mock Mode</button>
+        <button onclick="showMockData()">Show Mock Data</button>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>ESP32 Device Manager</h1>
+            <nav>
+                <a href="#" onclick="showDeviceInfo()" class="active">Device Info</a>
+                <a href="#" onclick="showConfig()">Configuration</a>
+            </nav>
+        </header>
+
+        <main id="mainContent">
+            <!-- Content will be loaded dynamically -->
+        </main>
+    </div>
+
+    <script>
+        // Mock API implementation for demo
+        class MockAPI {
+            static async fetch(url, options = {}) {
+                console.log(`Mock API call: ${options.method || 'GET'} ${url}`);
+                
+                // Simulate network delay
+                await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+                
+                // Route to appropriate mock handler
+                if (url === '/api/device/info') {
+                    return this.mockDeviceInfo();
+                } else if (url === '/api/device/reboot') {
+                    return this.mockReboot();
+                } else if (url === '/api/device/hard-reset') {
+                    return this.mockHardReset();
+                } else if (url === '/api/config/current') {
+                    return this.mockCurrentConfig();
+                } else if (url === '/api/wifi/scan') {
+                    return this.mockWiFiScan();
+                } else if (url === '/api/config/save') {
+                    return this.mockSaveConfig(JSON.parse(options.body));
+                } else if (url === '/api/config/reset') {
+                    return this.mockResetConfig();
+                }
+                
+                throw new Error(`Mock API endpoint not found: ${url}`);
+            }
+            
+            static async mockDeviceInfo() {
+                return {
+                    deviceName: 'ESP32-Demo-Device',
+                    macAddress: '24:6F:28:8B:7A:3C',
+                    firmwareVersion: 'v1.2.3-demo',
+                    uptime: Math.floor(Math.random() * 86400) + 3600, // Random uptime
+                    wifiStatus: 'Connected',
+                    ipAddress: '192.168.1.100'
+                };
+            }
+            
+            static async mockReboot() {
+                return { success: true, message: 'Device rebooting (demo)' };
+            }
+            
+            static async mockHardReset() {
+                return { success: true, message: 'Hard reset completed (demo)' };
+            }
+            
+            static async mockCurrentConfig() {
+                return {
+                    deviceName: 'ESP32-Demo-Device',
+                    wifiSSID: 'DemoWiFi',
+                    wifiPassword: ''
+                };
+            }
+            
+            static async mockWiFiScan() {
+                const networks = [
+                    { ssid: 'DemoWiFi', rssi: -45, encrypted: true },
+                    { ssid: 'NeighborWiFi', rssi: -67, encrypted: true },
+                    { ssid: 'OpenNetwork', rssi: -72, encrypted: false },
+                    { ssid: 'OfficeWiFi', rssi: -55, encrypted: true },
+                    { ssid: 'GuestNetwork', rssi: -78, encrypted: false },
+                    { ssid: 'TestNetwork', rssi: -82, encrypted: true }
+                ];
+                
+                // Shuffle networks for demo
+                for (let i = networks.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [networks[i], networks[j]] = [networks[j], networks[i]];
+                }
+                
+                return { networks };
+            }
+            
+            static async mockSaveConfig(config) {
+                console.log('Saving config (demo):', config);
+                return { success: true, message: 'Configuration saved successfully (demo)' };
+            }
+            
+            static async mockResetConfig() {
+                return { success: true, message: 'Configuration reset successfully (demo)' };
+            }
+        }
+        
+        // Override fetch to use mock API
+        const originalFetch = window.fetch;
+        let mockModeEnabled = true;
+        
+        window.fetch = function(url, options = {}) {
+            if (mockModeEnabled && url.startsWith('/api/')) {
+                return MockAPI.fetch(url, options);
+            }
+            return originalFetch(url, options);
+        };
+        
+        // Demo controls
+        function toggleMockMode() {
+            mockModeEnabled = !mockModeEnabled;
+            const banner = document.querySelector('.demo-banner');
+            if (mockModeEnabled) {
+                banner.innerHTML = '🧪 DEMO MODE - Using Mock API Data <button onclick="toggleMockMode()">Toggle Mock Mode</button> <button onclick="showMockData()">Show Mock Data</button>';
+            } else {
+                banner.innerHTML = '🔌 REAL MODE - Using Real API <button onclick="toggleMockMode()">Toggle Mock Mode</button> <button onclick="showMockData()">Show Mock Data</button>';
+            }
+        }
+        
+        function showMockData() {
+            alert('Mock data is being used for all API calls. Check the browser console for details.');
+        }
+        
+        // Navigation
+        function showDeviceInfo() {
+            document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+            loadDeviceInfoPage();
+        }
+        
+        function showConfig() {
+            document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+            loadConfigPage();
+        }
+        
+        function loadDeviceInfoPage() {
+            fetch('index.html')
+                .then(response => response.text())
+                .then(html => {
+                    // Extract main content
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const mainContent = doc.querySelector('main');
+                    document.getElementById('mainContent').innerHTML = mainContent.innerHTML;
+                    
+                    // Load device info script
+                    loadScript('device-info.js');
+                });
+        }
+        
+        function loadConfigPage() {
+            fetch('config.html')
+                .then(response => response.text())
+                .then(html => {
+                    // Extract main content
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const mainContent = doc.querySelector('main');
+                    document.getElementById('mainContent').innerHTML = mainContent.innerHTML;
+                    
+                    // Load config script
+                    loadScript('config.js');
+                });
+        }
+        
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Load device info page by default
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDeviceInfoPage();
+        });
+    </script>
+</body>
+</html>

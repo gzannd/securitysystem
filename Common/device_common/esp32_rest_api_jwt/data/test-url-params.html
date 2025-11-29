@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 URL Parameters Test</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .test-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .test-links {
+            display: grid;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .test-link {
+            display: block;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 600;
+            transition: transform 0.3s ease;
+        }
+        
+        .test-link:hover {
+            transform: translateY(-2px);
+        }
+        
+        .code-example {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>ESP32 Device Manager - URL Parameters Test</h1>
+        <p>This page demonstrates how to use URL parameters to pre-populate device information in the ESP32 Device Manager.</p>
+        
+        <h2>Test Links</h2>
+        <div class="test-links">
+            <a href="index.html?deviceName=ESP32-Test-Device&macAddress=24:6F:28:8B:7A:3C&firmwareVersion=v1.2.3&uptime=3600&wifiStatus=Connected&ipAddress=192.168.1.100" class="test-link">
+                📱 Complete Device Info
+            </a>
+            
+            <a href="index.html?deviceName=MyESP32&macAddress=AA:BB:CC:DD:EE:FF&firmwareVersion=v2.0.1&uptime=86400&wifiStatus=Connected&ipAddress=10.0.0.50" class="test-link">
+                🏠 Home Device
+            </a>
+            
+            <a href="index.html?deviceName=Office-ESP32&macAddress=11:22:33:44:55:66&firmwareVersion=v1.5.0&uptime=172800&wifiStatus=Connected&ipAddress=192.168.0.200" class="test-link">
+                🏢 Office Device
+            </a>
+            
+            <a href="index.html?deviceName=Test-Device&macAddress=99:88:77:66:55:44&firmwareVersion=v0.9.1&uptime=0&wifiStatus=Disconnected&ipAddress=Not%20connected" class="test-link">
+                🔌 Disconnected Device
+            </a>
+            
+            <a href="index.html?deviceName=Partial-Info&macAddress=12:34:56:78:9A:BC" class="test-link">
+                ⚠️ Partial Information
+            </a>
+        </div>
+        
+        <h2>URL Parameter Format</h2>
+        <p>The following parameters can be passed via URL query string:</p>
+        
+        <div class="code-example">
+index.html?deviceName=DeviceName&macAddress=MAC:AD:DR:ES:S0:00&firmwareVersion=v1.0.0&uptime=3600&wifiStatus=Connected&ipAddress=192.168.1.100
+        </div>
+        
+        <h3>Parameter Details:</h3>
+        <ul>
+            <li><strong>deviceName</strong> - User-defined device name</li>
+            <li><strong>macAddress</strong> - Device MAC address (format: XX:XX:XX:XX:XX:XX)</li>
+            <li><strong>firmwareVersion</strong> - Current firmware version</li>
+            <li><strong>uptime</strong> - Device uptime in seconds (integer)</li>
+            <li><strong>wifiStatus</strong> - WiFi connection status (e.g., "Connected", "Disconnected")</li>
+            <li><strong>ipAddress</strong> - Device IP address</li>
+        </ul>
+        
+        <h2>Example Usage in ESP32 Code</h2>
+        <div class="code-example">
+// Redirect to device info page with parameters
+String redirectUrl = "/index.html?";
+redirectUrl += "deviceName=" + urlEncode(deviceName) + "&";
+redirectUrl += "macAddress=" + WiFi.macAddress() + "&";
+redirectUrl += "firmwareVersion=" + urlEncode(FIRMWARE_VERSION) + "&";
+redirectUrl += "uptime=" + String(millis() / 1000) + "&";
+redirectUrl += "wifiStatus=" + urlEncode(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected") + "&";
+redirectUrl += "ipAddress=" + urlEncode(WiFi.localIP().toString());
+
+server.sendHeader("Location", redirectUrl);
+server.send(302, "text/plain", "");
+        </div>
+        
+        <h2>Features</h2>
+        <ul>
+            <li>✅ Automatic population of device information from URL parameters</li>
+            <li>✅ Visual indicator when parameters are used</li>
+            <li>✅ Graceful fallback to API calls when no parameters present</li>
+            <li>✅ URL-encoded parameter handling</li>
+            <li>✅ Page title updates with device name</li>
+            <li>✅ Success message when parameters are loaded</li>
+        </ul>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="index.html" class="btn btn-primary">← Back to Device Manager</a>
+        </div>
+    </div>
+</body>
+</html>

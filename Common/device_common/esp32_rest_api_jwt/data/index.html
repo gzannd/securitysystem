@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Device Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>ESP32 Device Manager</h1>
+            <nav>
+                <a href="index.html" class="active">Device Info</a>
+                <a href="config.html">Configuration</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="device-info-card">
+                <h2>Device Information</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Device Name:</label>
+                        <span id="deviceName">%DEVICENAME%</span>
+                    </div>
+                    <div class="info-item">
+                        <label>MAC Address:</label>
+                        <span id="macAddress">%MACADDRESS%</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Firmware Version:</label>
+                        <span id="firmwareVersion">%FIRMWAREVERSION%</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Uptime:</label>
+                        <span id="uptime"></span>
+                    </div>
+                    <!--
+                    <div class="info-item">
+                        <label>WiFi Status:</label>
+                        <span id="wifiStatus">Loading...</span>
+                    </div>
+                    <div class="info-item">
+                        <label>IP Address:</label>
+                        <span id="ipAddress">%IPADDRESS%</span>
+                    </div>-->
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button id="rebootBtn" class="btn btn-warning">
+                    <span class="icon">🔄</span>
+                    Reboot Device
+                </button>
+                <button id="hardResetBtn" class="btn btn-danger">
+                    <span class="icon">⚠️</span>
+                    Hard Reset
+                </button>
+                <button id="refreshBtn" class="btn btn-primary">
+                    <span class="icon">🔄</span>
+                    Refresh Info
+                </button>
+            </div>
+
+            <div id="statusMessage" class="status-message"></div>
+        </main>
+    </div>
+
+    <!-- Confirmation Modal for Hard Reset -->
+    <div id="hardResetModal" class="modal">
+        <div class="modal-content">
+            <h3>⚠️ Hard Reset Confirmation</h3>
+            <p>This will erase all configuration data and reset the device to factory defaults. This action cannot be undone.</p>
+            <p><strong>Are you sure you want to proceed?</strong></p>
+            <div class="modal-buttons">
+                <button id="confirmHardReset" class="btn btn-danger">Yes, Hard Reset</button>
+                <button id="cancelHardReset" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+<script>
+        // Uptime formatting function (copied from device-info.js)
+        function formatUptime(seconds) {
+            if (!seconds || seconds <= 0) return 'Unknown';
+            
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds %% 86400) / 3600);
+            const minutes = Math.floor((seconds %% 3600) / 60);
+            const secs = seconds % 60;
+
+            if (days > 0) {
+                return `${days}d ${hours}h ${minutes}m ${secs}s`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+
+
+        function init(){
+            // Populate device information fields
+            document.getElementById('uptime').textContent = formatUptime(100000000);
+        
+            // Show success message
+                const statusElement = document.getElementById('statusMessage');
+                statusElement.textContent = 'Device information loaded from URL parameters.';
+                statusElement.className = 'status-message success';
+                
+                // Hide success message after 3 seconds
+                setTimeout(() => {
+                    statusElement.className = 'status-message';
+                }, 3000);
+        }
+
+        if (document.readyState === 'complete') {
+        init();
+        } else {
+        window.addEventListener('load', init);
+        }
+    </script>
+   
+</html>

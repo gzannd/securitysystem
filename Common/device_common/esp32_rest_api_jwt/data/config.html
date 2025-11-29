@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Configuration - Device Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ESP32 Device Manager</h1>
+            <nav>
+                <a href="index.html">Device Info</a>
+                <a href="config.html" class="active">Configuration</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="config-card">
+                <h2>Device Configuration</h2>
+                
+                <form id="configForm">
+                    <div class="form-group">
+                        <label for="deviceName">Device Name:</label>
+                        <input type="text" id="deviceName" name="deviceName" placeholder="Enter device name" required>
+                        <small>This name will be used to identify your device on the network</small>
+                    </div>
+
+                    <div class="form-group" id="wifiNetworksGroup" style="display: none;">
+                        <select id="wifiNetwork" name="wifiNetwork" required>
+                            <option value="">Select a WiFi network...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="wifiPasswordGroup" style="display: none;">
+                        <label for="wifiPassword">WiFi Password:</label>
+                        <input type="password" id="wifiPassword" name="wifiPassword" placeholder="Enter WiFi password">
+                        <small>Leave empty if the network is open</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="wifiScanBtn">WiFi Network:</label>
+                        <div class="wifi-section">
+                            <button type="button" id="wifiScanBtn" class="btn btn-secondary">
+                                <span class="icon">📡</span>
+                                Scan for Networks
+                            </button>
+                            <div id="wifiStatus" class="wifi-status"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" id="saveConfigBtn" class="btn btn-primary">
+                            <span class="icon">💾</span>
+                            Save Configuration
+                        </button>
+                        <button type="button" id="resetConfigBtn" class="btn btn-secondary">
+                            <span class="icon">🔄</span>
+                            Reset to Defaults
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="statusMessage" class="status-message"></div>
+        </main>
+    </div>
+
+    <!-- Loading Modal -->
+    <div id="loadingModal" class="modal">
+        <div class="modal-content">
+            <div class="loading-spinner"></div>
+            <p id="loadingText">Scanning for WiFi networks...</p>
+        </div>
+    </div>
+
+    <script>
+  
+
+    var ssids = [];
+
+       (() => {
+        // Helpers
+            const show = (el) => el.style.display = '';
+            const hide = (el) => el.style.display = 'none';
+            const enable = (el) => el.disabled = false;
+            const disable = (el) => el.disabled = true;
+            const openModal = (msg) => { els.loadingText.textContent = msg; els.modal.style.display = 'flex'; };
+            const closeModal = () => { els.modal.style.display = 'none'; };
+            const setStatus = (msg, type='info') => {
+                els.statusMessage.textContent = msg;
+                els.statusMessage.className = `status-message ${type}`;
+            };
+
+            const els = {
+                form: document.getElementById('configForm'),
+                deviceName: document.getElementById('deviceName'),
+                wifiScanBtn: document.getElementById('wifiScanBtn'),
+                wifiStatus: document.getElementById('wifiStatus'),
+                wifiNetworksGroup: document.getElementById('wifiNetworksGroup'),
+                wifiNetwork: document.getElementById('wifiNetwork'),
+                wifiPasswordGroup: document.getElementById('wifiPasswordGroup'),
+                wifiPassword: document.getElementById('wifiPassword'),
+                saveBtn: document.getElementById('saveConfigBtn'),
+                resetBtn: document.getElementById('resetConfigBtn'),
+                statusMessage: document.getElementById('statusMessage'),
+                modal: document.getElementById('loadingModal'),
+                loadingText: document.getElementById('loadingText')
+            };
+
+            // Initial state
+            hide(els.wifiNetworksGroup);
+            hide(els.wifiPasswordGroup);
+            disable(els.wifiNetwork); // avoid required issues while hidden
+            els.wifiNetwork.required = false;
+
+            // If inline ssids present, pre-populate
+            if (Array.isArray(window.ssids) && window.ssids.length) {
+                populateNetworks(window.ssids);
+                setStatus(`Found ${window.ssids.length} networks (cached).`, 'info');
+            }
+
+            
+             function isOpen(enctype) {
+                const e = (enctype || '').toUpperCase();
+                return e === 'OPEN' || e === 'NONE' || e === 'UNKNOWN';
+            }
+
+            function rssiToBars(rssi) {
+                if (rssi >= -50) return 4;
+                if (rssi >= -60) return 3;
+                if (rssi >= -70) return 2;
+                if (rssi >= -80) return 1;
+                return 0;
+            }
+
+            function togglePasswordBySelection() {
+                const sel = els.wifiNetwork.options[els.wifiNetwork.selectedIndex];
+                const enctype = sel ? (sel.dataset.enctype || '') : '';
+                if (isOpen(enctype) || !els.wifiNetwork.value) {
+                hide(els.wifiPasswordGroup);
+                els.wifiPassword.value = '';
+                els.wifiPassword.required = false;
+                } else {
+                show(els.wifiPasswordGroup);
+                els.wifiPassword.required = true;
+                }
+            }
+
+            // Populate networks
+            function populateNetworks(list) {
+                // sort by signal strength desc, then uniq by ssid
+                const seen = new Set();
+                const sorted = list
+                .slice()
+                .sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999))
+                .filter(x => {
+                    if (!x || !x.ssid) return false;
+                    if (seen.has(x.ssid)) return false;
+                    seen.add(x.ssid);
+                    return true;
+                });
+
+                // Clear existing
+                els.wifiNetwork.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = 'Select a WiFi network...';
+                els.wifiNetwork.appendChild(placeholder);
+
+                for (const net of sorted) {
+                const opt = document.createElement('option');
+                opt.value = net.ssid;
+                const bars = '▁▂▃▄'.slice(0, rssiToBars(net.rssi)).padEnd(4, '·');
+                const lock = isOpen(net.enctype) ? '🟢 Open' : '🔒 Secured';
+                // Use textContent to avoid XSS from malicious SSIDs
+                opt.textContent = `${net.ssid}  (${bars}  ${net.rssi ?? '?'} dBm, ${lock})`;
+                opt.dataset.enctype = net.enctype || '';
+                els.wifiNetwork.appendChild(opt);
+                }
+
+                show(els.wifiNetworksGroup);
+                enable(els.wifiNetwork);
+                // required only when visible
+                els.wifiNetwork.required = true;
+            }
+
+            els.wifiScanBtn.addEventListener('click', async () => {
+                openModal('Scanning for WiFi networks...');
+                setStatus('');
+
+                try{
+                    const res = await fetch('http://192.168.4.1/api/wifi/scan', { method: 'GET'});
+                    if (!res.ok) throw new Error(`Scan failed (${res.status})`);
+                    const data = await res.json();
+                    console.log(data);
+                    populateNetworks(data);
+                    setStatus(`Found ${data.length} networks.`, 'success');
+                } 
+                catch(err)
+                {
+                    setStatus(`Scan error: ${err.message}`, 'error');
+                } 
+                finally
+                {
+                    closeModal();
+                }
+            });
+
+            els.wifiNetwork.addEventListener('change', togglePasswordBySelection);
+
+            els.resetBtn.addEventListener('click', async () => {
+                if (!confirm('Reset configuration to device defaults?')) return;
+                try {
+                disable(els.saveBtn);
+                setStatus('Resetting to defaults...', 'info');
+                const res = await fetch('/config/reset', { method: 'POST' });
+                if (!res.ok) throw new Error(`Reset failed (${res.status})`);
+                setStatus('Configuration reset. Device may reboot.', 'success');
+                } catch (err) {
+                setStatus(`Reset error: ${err.message}`, 'error');
+                } finally {
+                enable(els.saveBtn);
+                }
+            });
+
+            els.form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                try {
+                disable(els.saveBtn);
+                setStatus('Saving configuration...', 'info');
+
+                const payload = {
+                    deviceName: els.deviceName.value.trim(),
+                    ssid: els.wifiNetwork.value || null,
+                    password: els.wifiPassword.value || null
+                };
+
+                const res = await fetch('/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error(`Save failed (${res.status})`);
+
+                const result = await res.json().catch(() => ({}));
+                setStatus(result.message || 'Configuration saved. Device may reboot/apply settings.', 'success');
+                } catch (err) {
+                setStatus(`Save error: ${err.message}`, 'error');
+                } finally {
+                enable(els.saveBtn);
+                }
+            });
+        })();
+
+    </script>
+</body>
+</html>
