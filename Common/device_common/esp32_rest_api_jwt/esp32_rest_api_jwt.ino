@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <ArduinoMqttClient.h>
-
+#include <ezButton.h>
 
 #define CONFIG_DOC_SIZE 1000
 #define MAX_LOG_FILE_SIZE 10000
@@ -25,10 +25,16 @@
 #define SLOW_BLINK_ON_INTERVAL 50
 
 #define MEDIUM_BLINK_OFF_INTERVAL 250 
-#define MEDIUM_BLINK_ON_INTERVAL 50 
+#define MEDIUM_BLINK_ON_INTERVAL 250 
 
-#define FAST_BLINK_ON_INTERVAL 25
-#define FAST_BLINK_OFF_INTERVAL 50
+#define FAST_BLINK_ON_INTERVAL 100
+#define FAST_BLINK_OFF_INTERVAL 100
+
+#define BUTTON_GPIO 33
+#define DEBOUNCE_DELAY 25 
+
+#define SHORT_BUTTON_PRESS_INTERVAL 1000 
+#define LONG_BUTTON_PRESS_INTERVAL 2000
 
 // ===================== Constants & Globals =====================
 const char* jwtSecret = "your-256-bit-secret";
@@ -44,9 +50,17 @@ const char* DEFAULT_DEVICE_NAME = "No device name";
 
 const int LED_PIN = 5;
 int BLINK_SPEED = 0;
+unsigned long ledOnMillis = 0;
+unsigned long ledOffMillis = 0;
+unsigned long ledMillis = 0;
+
+unsigned long buttonPressStartMillis = 0;
+unsigned long buttonPressDurationMillis = 0;
 
 Preferences prefs;
 AsyncWebServer server(80);
+
+RTC_DATA_ATTR int bootCount = 0;  //Save boot count to RTC memory, which persists between reboots/deep sleep cycles.
 
 String userDefinedName = "";
 bool encryptionSupported = true;
@@ -58,6 +72,8 @@ StaticJsonDocument<CONFIG_DOC_SIZE> configuration;
 int ledOnInterval = 0;
 int ledOffInterval = 0;
 int blinkMode = 0;
+
+ezButton mainButton(BUTTON_GPIO); //Set up the main control button.
 
 const int wifiConnectTimeoutMs = 15000;
 const char* fallbackApPassword = "password";
@@ -615,8 +631,13 @@ void setupRoutes() {
   server.addHandler(loginHandler);
 }
 
+
 // ===================== setup / loop =====================
 void setup() {
+  ++bootCount;
+
+  mainButton.setDebounceTime(DEBOUNCE_DELAY);
+
   Serial.begin(19200);
 
   pinMode(LED_PIN, OUTPUT);
@@ -636,7 +657,7 @@ void setup() {
   // Load encrypted settings
   configuration = loadConfiguration();
 
-  //If the configuration is null, or does not contain a valid ssid, then go into AP mode. 
+  //If the configuration is null or does not contain a valid ssid, then go into AP mode. 
   if(configuration.isNull() 
       || configuration.containsKey("ssid") == false 
       || configuration["ssid"] == ""){
@@ -660,10 +681,10 @@ void setup() {
 
     logEvent("Starting AP webserver.");
     server.begin();
-
   } else {
     //Attempt to connect using the config settings. 
     Serial.println("Valid configuration found. Initializing WiFi mode.");
+    setBlinkSpeed(4);
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(String(configuration["ssid"]).c_str(), String(configuration["password"]).c_str());
 
@@ -690,12 +711,54 @@ void setup() {
 }
 
 void loop() {
-// Turn the LED on (HIGH is the voltage level)
-  digitalWrite(LED_PIN, HIGH);
-  // Wait for 1000 milliseconds (1 second)
-  delay(ledOnInterval);
-  // Turn the LED off by making the voltage LOW
-  digitalWrite(LED_PIN, LOW);
-  // Wait for 1000 milliseconds (1 second)
-  delay(ledOffInterval);
+  mainButton.loop();
+
+  unsigned long now = millis();
+
+  if(buttonPressStartMillis > 0){
+     buttonPressDurationMillis = now - buttonPressStartMillis;
+  };
+
+  //Manage button states. This is simple short/long click logic,
+  //should implement a class to enable more complex logic such as 
+  //double clicks. 
+  if(mainButton.isPressed()){
+    Serial.println("Button pressed");
+    buttonPressStartMillis = now;
+    buttonPressDurationMillis = 0;
+  }
+
+  if(mainButton.isReleased()){
+    Serial.println("Button released");
+    Serial.println(buttonPressDurationMillis);
+    if(buttonPressDurationMillis <= SHORT_BUTTON_PRESS_INTERVAL){
+      Serial.println("Short press");
+    }
+    else{
+      Serial.println("Long press");
+    }
+
+    buttonPressDurationMillis = 0;
+    buttonPressStartMillis = 0;
+  }
+
+  //Manage LED blink state. Eventually, this should be replaced with a 
+  //class to keep the logic clean, and to allow more complex blink patterns. 
+  //But this simple solution works for now.
+  bool ledState = digitalRead(LED_PIN);
+
+  if(ledState == HIGH){
+    //LED is on. Determine if it's time to turn it off. 
+    if(now - ledMillis > ledOnInterval){
+      digitalWrite(LED_PIN, LOW);
+      ledMillis = now;
+    }
+  }
+  else{
+    //LED is off. Determine if it's time to turn it on. 
+    if(now - ledMillis > ledOffInterval){
+      digitalWrite(LED_PIN, HIGH);
+      ledMillis = now;
+    }
+  }
 }
