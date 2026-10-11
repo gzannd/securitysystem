@@ -11,9 +11,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <stdlib.h>
-#include <time.h>
 #include <ArduinoMqttClient.h>
 #include <ezButton.h>
+#include <RTClib.h>
 
 #define CONFIG_DOC_SIZE 1000
 #define MAX_LOG_FILE_SIZE 10000
@@ -47,6 +47,9 @@ const char* validUsername = "admin";
 const char* validPassword = "secret";
 const char* AP_HUB_NAME_PREFIX = "ZANNDTECH_CFG ";
 const char* DEFAULT_DEVICE_NAME = "No device name";
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+RTC_DS1307 rtc;
 
 const int LED_PIN = 5;
 int BLINK_SPEED = 0;
@@ -72,6 +75,8 @@ StaticJsonDocument<CONFIG_DOC_SIZE> configuration;
 int ledOnInterval = 0;
 int ledOffInterval = 0;
 int blinkMode = 0;
+int restartTimeMillis = 0;
+bool isRTCAvailable = false; 
 
 ezButton mainButton(BUTTON_GPIO); //Set up the main control button.
 
@@ -333,8 +338,71 @@ void handleGetLogs(AsyncWebServerRequest* request) {
 
 }
 
-void handleSetTime(AsyncWebServerRequest* request) {
+void handleSetTime(AsyncWebServerRequest* request, const char* data) {
+  //If the RTC hardware is on and present then set the time. 
+  //Else return a 400. 
+  bool error = false; 
 
+  //Check presence of RTC hardware. 
+  if (! rtc.begin()) {
+    logEvent("Couldn't find RTC");
+    Serial.flush();
+    while (1) delay(10);
+
+    //Return a 410 error. 
+    request->send(410, "application/json", "{\"status\":\"Feature not available.\"}");
+  }
+
+  //Parse the request.
+  //value parameter is assumed to be date/time formatted as 24h (military time).
+  //YYYY-MM-DD HH:MM:SS
+
+  int year = 0;
+  int month = 0;
+  int day = 0;
+  int hour = 0;
+  int minute = 0;
+  int second = 0;
+
+  
+  if (sscanf(data, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second) == 6) {
+    Serial.println("Date/Time Parsed Successfully:");
+    Serial.print("Year: "); Serial.println(year);
+    Serial.print("Month: "); Serial.println(month);
+    Serial.print("Day: "); Serial.println(day);
+    Serial.print("Hour: "); Serial.println(hour);
+    Serial.print("Minute: "); Serial.println(minute);
+    Serial.print("Second: "); Serial.println(second);
+
+    logEvent("Setting date");
+    
+    rtc.adjust(DateTime(year, month, day, hour, minute, second));
+  } else {
+    logEvent("Error parsing data.");
+    error = true;
+  }
+
+
+/*
+  if (! rtc.isrunning()) {
+    Serial.println("RTC is NOT running, let's set the time!");
+    // When time needs to be set on a new device, or after a power loss, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  } else {
+    //rtc.adjust(DateTime(2025, 12, 13, 18, 0, 0));
+  }
+*/
+
+  if(error == true){
+    request->send(400, "application/json", "{\"status\":\"Bad Request\"}");
+  }
+  else{
+    request->send(200, "application/json", "{\"status\":\"OK\"}");
+  }
 }
 
 void handleGetTime(AsyncWebServerRequest* request) {
@@ -360,16 +428,28 @@ void handleIdentity(AsyncWebServerRequest* request) {
 
 String jsonString = "[]";
 
-void handleLocation(AsyncWebServerRequest* request) {
+void handleGetLocation(AsyncWebServerRequest* request) {
   request->send(200, "application/json", getLocationJson());
+}
+
+void handleSetLocation(AsyncWebServerRequest* request) {
+  request->send(200, "application/json", getLocationJson());
+}
+
+void setRebootTimer(){
+  if(restartTimeMillis == 0){
+    restartTimeMillis = millis();
+  }
+}
+
+void clearRebootTimer(){
+  restartTimeMillis = 0;
 }
 
 void handleSoftReset(AsyncWebServerRequest* request) {
   logEvent("Performing soft reset.");
   request->send(200, "text/plain", "");
-  // give it a moment to flush
-  delay(100);
-  ESP.restart();
+  setRebootTimer();  //Trigger a reboot by setting the restart time variable.
 }
 
 String processor(const String& var){
@@ -490,6 +570,10 @@ void setupRoutes() {
     request->send(LittleFS, "/index.html", String(), false, processor);
   });
 
+  server.on("/device-info.js", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(LittleFS, "/device-info.js", "text/javascript", false);
+  });
+
   server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/index.html", String(), false, processor);
   });
@@ -591,19 +675,34 @@ void setupRoutes() {
     request->send(200, "application/json", jsonString);
   });
 
-  server.on("/clock", HTTP_PUT, handleSetTime);
+
+  server.on("/clock", HTTP_PUT, [](AsyncWebServerRequest *request) {
+
+  }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+     String requestBody;
+
+     if (index == 0) requestBody = "";
+     
+     requestBody += String((char*)data).substring(0, len);
+     if (index + len == total) {
+        handleSetTime(request, requestBody.c_str());
+     }
+  });
+
 
   server.on("/clock", HTTP_GET, handleGetTime);
 
   server.on("/identity", HTTP_GET, handleIdentity);
 
-  server.on("/location", HTTP_GET, handleLocation);
+  server.on("/location", HTTP_GET, handleGetLocation);
+
+  server.on("/location", HTTP_POST, handleSetLocation);
 
   server.on("/capabilities", HTTP_GET, handleGetCapabilities);
 
-  server.on("/reset/soft", HTTP_PUT, handleSoftReset);
+  server.on("/reset/soft", HTTP_POST, handleSoftReset);
 
-  server.on("/reset/hard", HTTP_PUT, handleFactoryReset);
+  server.on("/reset/hard", HTTP_POST, handleFactoryReset);
 
   server.onNotFound([](AsyncWebServerRequest *request){
     String url = request->url();
@@ -635,38 +734,54 @@ void setupRoutes() {
 // ===================== setup / loop =====================
 void setup() {
   ++bootCount;
+  prefs.begin("esp-32-bootmode", false);
+  bool bootToApMode = prefs.getBool("bootToApMode", false);
+  prefs.end();
 
   mainButton.setDebounceTime(DEBOUNCE_DELAY);
 
   Serial.begin(19200);
 
   pinMode(LED_PIN, OUTPUT);
-  setBlinkSpeed(4);
+  setBlinkSpeed(3);
   delay(1000); 
 
   logEvent("Starting up.");
 
+  if(!rtc.begin()){
+    logEvent("RTC is disabled or not available.");
+    isRTCAvailable = false;
+  }
+  else 
+  {
+    isRTCAvailable = true;
+  }
+
   if (!LittleFS.begin(true)) {
    logEvent("[ERROR] LittleFS mount failed");
   }
-
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
   logEvent("Checking configuration settings.");
 
   // Load encrypted settings
   configuration = loadConfiguration();
 
+  Serial.print("bootToAPMode = ");
+  Serial.println(bootToApMode);
+
   //If the configuration is null or does not contain a valid ssid, then go into AP mode. 
   if(configuration.isNull() 
       || configuration.containsKey("ssid") == false 
-      || configuration["ssid"] == ""){
+      || configuration["ssid"] == ""
+      || bootToApMode == true) {
 
-    logEvent("No valid configuration found. Initializing AP mode.");
+    logEvent("No valid configuration found or force boot to AP mode. Initializing AP mode.");
 
-    //Minimum required configuration not set. Go to AP mode.
-   // WiFi.mode(WIFI_AP_STA);
-   // WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+    //Reset the boot to AP mode flag.
+    bootToApMode = false;
+    prefs.begin("esp-32-bootmode", false);
+    prefs.putBool("bootToApMode", false);
+    prefs.end();
 
     // Always configure routes before server.begin()
     setupRoutes();
@@ -681,10 +796,11 @@ void setup() {
 
     logEvent("Starting AP webserver.");
     server.begin();
-  } else {
+  } 
+  else {
     //Attempt to connect using the config settings. 
     Serial.println("Valid configuration found. Initializing WiFi mode.");
-    setBlinkSpeed(4);
+    setBlinkSpeed(3);
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(String(configuration["ssid"]).c_str(), String(configuration["password"]).c_str());
 
@@ -695,70 +811,122 @@ void setup() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-      setBlinkSpeed(0);
+      setBlinkSpeed(1);
 
       wifiMacAddress = WiFi.macAddress();
       logEvent("[BOOT] Device started. IP: " + WiFi.localIP().toString());
-    } else {
+    } 
+    else {
       logEvent("[BOOT] WiFi connect failed. Rebooting to AP mode...");
-
-      wifiMacAddress = WiFi.macAddress();
-      String apSsid = String(AP_HUB_NAME_PREFIX) + wifiMacAddress;
-      WiFi.mode(WIFI_AP);
-      WiFi.softAP(apSsid.c_str(), fallbackApPassword);
+      prefs.begin("esp-32-bootmode", false);
+      prefs.putBool("bootToApMode", true);
+      prefs.end();
+      setRebootTimer();
     }
   }
 }
 
 void loop() {
-  mainButton.loop();
+  mainButton.loop();  //Call the EZButton loop handler.
 
-  unsigned long now = millis();
+  if(isRTCAvailable == true) {
+    DateTime rtcnow = rtc.now();
+    
+    // Getting each time field in individual variables
+    // And adding a leading zero when needed;
+    String yearStr = String(rtcnow.year(), DEC);
+    String monthStr = (rtcnow.month() < 10 ? "0" : "") + String(rtcnow.month(), DEC);
+    String dayStr = (rtcnow.day() < 10 ? "0" : "") + String(rtcnow.day(), DEC);
+    String hourStr = (rtcnow.hour() < 10 ? "0" : "") + String(rtcnow.hour(), DEC); 
+    String minuteStr = (rtcnow.minute() < 10 ? "0" : "") + String(rtcnow.minute(), DEC);
+    String secondStr = (rtcnow.second() < 10 ? "0" : "") + String(rtcnow.second(), DEC);
+    String dayOfWeek = daysOfTheWeek[rtcnow.dayOfTheWeek()];
 
-  if(buttonPressStartMillis > 0){
-     buttonPressDurationMillis = now - buttonPressStartMillis;
-  };
+    // Complete time string
+    String formattedTime = dayOfWeek + ", " + yearStr + "-" + monthStr + "-" + dayStr + " " + hourStr + ":" + minuteStr + ":" + secondStr;
 
-  //Manage button states. This is simple short/long click logic,
-  //should implement a class to enable more complex logic such as 
-  //double clicks. 
-  if(mainButton.isPressed()){
-    Serial.println("Button pressed");
-    buttonPressStartMillis = now;
-    buttonPressDurationMillis = 0;
+    // Print the complete formatted time
+    Serial.println(formattedTime);
+
+    Serial.println();
   }
+  unsigned long now = millis(); 
 
-  if(mainButton.isReleased()){
-    Serial.println("Button released");
-    Serial.println(buttonPressDurationMillis);
-    if(buttonPressDurationMillis <= SHORT_BUTTON_PRESS_INTERVAL){
-      Serial.println("Short press");
-    }
-    else{
-      Serial.println("Long press");
-    }
-
-    buttonPressDurationMillis = 0;
-    buttonPressStartMillis = 0;
-  }
-
-  //Manage LED blink state. Eventually, this should be replaced with a 
-  //class to keep the logic clean, and to allow more complex blink patterns. 
-  //But this simple solution works for now.
-  bool ledState = digitalRead(LED_PIN);
-
-  if(ledState == HIGH){
-    //LED is on. Determine if it's time to turn it off. 
-    if(now - ledMillis > ledOnInterval){
+  //Check to see if the restart timer is not zero and 
+  //has exceeded 1 second. If so, then we need to restart the device.
+  if(restartTimeMillis > 0){
+    if(now - restartTimeMillis > 1000){
+      //Reboot.
       digitalWrite(LED_PIN, LOW);
-      ledMillis = now;
+      ESP.restart();
     }
   }
   else{
-    //LED is off. Determine if it's time to turn it on. 
-    if(now - ledMillis > ledOffInterval){
-      digitalWrite(LED_PIN, HIGH);
-      ledMillis = now;
+    //Check for a long button press. If a long button press is detected,
+    //flash the LED quickly to indicate that to the user.
+    if(buttonPressDurationMillis > LONG_BUTTON_PRESS_INTERVAL){
+      setBlinkSpeed(4);
+    }
+
+    //If we're tracking a button press, accumulate milliseconds.
+    if(buttonPressStartMillis > 0){
+      buttonPressDurationMillis = now - buttonPressStartMillis;
+    };
+
+    //Manage button states. This is simple short/long click logic,
+    //should implement a class to enable more complex logic such as 
+    //double clicks. 
+
+    //When the button is pressed, start tracking how long it's been pressed
+    //by setting an accunulator to count the milliseconds after the press event.
+    if(mainButton.isPressed()){
+      buttonPressStartMillis = now;
+      buttonPressDurationMillis = 0;
+    }
+
+    //When the button is released, check to see if it was released after a short press,
+    //or a long press. Depending on the result, either reboot the device to AP mode, or 
+    //soft reboot the device in its current mode.
+    if(mainButton.isReleased()){
+      if(buttonPressDurationMillis <= SHORT_BUTTON_PRESS_INTERVAL){
+        Serial.println("Short press");
+        setRebootTimer();
+      }
+      else {
+        Serial.println("Long press");
+        prefs.begin("esp-32-bootmode", false);
+        prefs.putBool("bootToApMode", true);
+        prefs.end();
+
+        //A long press will force the device to restart without changing the boot mode.
+        setRebootTimer();
+        logEvent("Rebooting to AP mode...");
+
+        setRebootTimer();
+      }
+
+      buttonPressDurationMillis = 0;
+      buttonPressStartMillis = 0;
+    }
+
+    //Manage LED blink state. Eventually, this should be replaced with a 
+    //class to keep the logic clean, and to allow more complex blink patterns. 
+    //But this simple solution works for now.
+    bool ledState = digitalRead(LED_PIN);
+
+    if(ledState == HIGH){
+      //LED is on. Determine if it's time to turn it off. 
+      if(now - ledMillis > ledOnInterval){
+        digitalWrite(LED_PIN, LOW);
+        ledMillis = now;
+      }
+    }
+    else{
+      //LED is off. Determine if it's time to turn it on. 
+      if(now - ledMillis > ledOffInterval){
+        digitalWrite(LED_PIN, HIGH);
+        ledMillis = now;
+      }
     }
   }
 }

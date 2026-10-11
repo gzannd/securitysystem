@@ -82,14 +82,15 @@
     </div>
 </body>
 
+<script src="device-info.js"></script>
 <script>
         // Uptime formatting function (copied from device-info.js)
         function formatUptime(seconds) {
             if (!seconds || seconds <= 0) return 'Unknown';
             
             const days = Math.floor(seconds / 86400);
-            const hours = Math.floor((seconds %% 86400) / 3600);
-            const minutes = Math.floor((seconds %% 3600) / 60);
+            const hours = Math.floor((seconds ) / 3600);
+            const minutes = Math.floor((seconds) / 60);
             const secs = seconds % 60;
 
             if (days > 0) {
@@ -106,6 +107,8 @@
 
 
         function init(){
+            DeviceManager.init();
+
             // Populate device information fields
             document.getElementById('uptime').textContent = formatUptime(100000000);
         

@@ -1,0 +1,7 @@
+{
+    "ping":true,
+    "ssl":false,
+    "location":"text, lat/long/alt, custom",
+    "rtc":false,
+    "log":true
+}

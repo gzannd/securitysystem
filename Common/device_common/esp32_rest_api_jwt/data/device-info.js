@@ -1,7 +1,7 @@
 // ESP32 Device Manager - Device Information Page
 class DeviceInfoManager {
     constructor() {
-        this.apiBase = '/api'; // Base API endpoint
+        this.apiBase = 'http://192.168.4.1'; // Base API endpoint
         this.updateInterval = null;
         this.init();
     }
@@ -120,7 +120,7 @@ class DeviceInfoManager {
             this.showStatus('Rebooting device...', 'info');
             document.getElementById('rebootBtn').disabled = true;
 
-            const response = await fetch(`${this.apiBase}/device/reboot`, {
+            const response = await fetch(`${this.apiBase}/reset/soft`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -154,6 +154,31 @@ class DeviceInfoManager {
         document.getElementById('hardResetModal').style.display = 'none';
     }
 
+    async setDeviceTime() {
+        var now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth()).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds().padStart(2, '0'));
+
+        var formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        
+         const response = await fetch(`${this.apiBase}/clock`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'text/plain'
+                },
+                body: formattedTime
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+    }
+
     async hardResetDevice() {
         try {
             this.hideHardResetModal();
@@ -164,7 +189,7 @@ class DeviceInfoManager {
             document.getElementById('hardResetBtn').disabled = true;
             document.getElementById('refreshBtn').disabled = true;
 
-            const response = await fetch(`${this.apiBase}/device/hard-reset`, {
+            const response = await fetch(`${this.apiBase}/reset/hard`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

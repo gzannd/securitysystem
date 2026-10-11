@@ -82,16 +82,7 @@
 
        (() => {
         // Helpers
-            const show = (el) => el.style.display = '';
-            const hide = (el) => el.style.display = 'none';
-            const enable = (el) => el.disabled = false;
-            const disable = (el) => el.disabled = true;
-            const openModal = (msg) => { els.loadingText.textContent = msg; els.modal.style.display = 'flex'; };
-            const closeModal = () => { els.modal.style.display = 'none'; };
-            const setStatus = (msg, type='info') => {
-                els.statusMessage.textContent = msg;
-                els.statusMessage.className = `status-message ${type}`;
-            };
+
 
             const els = {
                 form: document.getElementById('configForm'),
@@ -109,6 +100,19 @@
                 loadingText: document.getElementById('loadingText')
             };
 
+            const show = (el) => el.style.display = '';
+            const hide = (el) => el.style.display = 'none';
+            const enable = (el) => el.disabled = false;
+            const disable = (el) => el.disabled = true;
+            const openModal = (msg) => { els.loadingText.textContent = msg; els.modal.style.display = 'flex'; };
+            const closeModal = () => { els.modal.style.display = 'none'; };
+            const setStatus = (msg, type='info') => {
+                els.statusMessage.textContent = msg;
+                els.statusMessage.className = `status-message ${type}`;
+            };
+
+            
+
             // Initial state
             hide(els.wifiNetworksGroup);
             hide(els.wifiPasswordGroup);
@@ -122,7 +126,7 @@
             }
 
             
-             function isOpen(enctype) {
+            function isOpen(enctype) {
                 const e = (enctype || '').toUpperCase();
                 return e === 'OPEN' || e === 'NONE' || e === 'UNKNOWN';
             }
@@ -210,18 +214,39 @@
 
             els.wifiNetwork.addEventListener('change', togglePasswordBySelection);
 
+            els.resetBtn.addEventListener('click', async() => {
+                if (!confirm('Boot device to current configuration?')) return;
+                try {
+                    disable(els.saveBtn);
+                    disable(els.resetBtn);
+
+                    setStatus('Booting device...', 'info');
+                    const res = await fetch('http://192.168.4.1/api/reset/soft', { method: 'POST' });
+
+                    if (!res.ok) throw new Error(`Boot failed (${res.status})`);
+                    setStatus('Booting device. This may take a few seconds.', 'success');
+                } catch (err) {
+                    setStatus(`Boot error: ${err.message}`, 'error');
+                } finally {
+                    enable(els.saveBtn);
+                    enable(els.resetBtn);
+                }
+            });
+
             els.resetBtn.addEventListener('click', async () => {
                 if (!confirm('Reset configuration to device defaults?')) return;
                 try {
-                disable(els.saveBtn);
-                setStatus('Resetting to defaults...', 'info');
-                const res = await fetch('/config/reset', { method: 'POST' });
-                if (!res.ok) throw new Error(`Reset failed (${res.status})`);
-                setStatus('Configuration reset. Device may reboot.', 'success');
+                    disable(els.saveBtn);
+                    disable(els.resetBtn);
+                    setStatus('Resetting to defaults...', 'info');
+                    const res = await fetch('/config/reset', { method: 'POST' });
+
+                    if (!res.ok) throw new Error(`Reset failed (${res.status})`);
+                    setStatus('Configuration reset. Device may reboot.', 'success');
                 } catch (err) {
-                setStatus(`Reset error: ${err.message}`, 'error');
+                    setStatus(`Reset error: ${err.message}`, 'error');
                 } finally {
-                enable(els.saveBtn);
+                    enable(els.saveBtn);
                 }
             });
 
