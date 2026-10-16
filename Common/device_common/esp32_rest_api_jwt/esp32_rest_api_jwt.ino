@@ -608,26 +608,32 @@ void listSPIFFSFiles() {
 
 // ===================== Routes Setup =====================
 void setupRoutes() {
+  //Request root--return index.html
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/index.html", String(), false, processor);
   });
 
+  //Request device info js file
   server.on("/device-info.js", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/device-info.js", "text/javascript", false);
   });
 
+  //Request index.html
   server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/index.html", String(), false, processor);
   });
 
+  //Request static config page
   server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/config.html", "text/html", false, processor);
   });
 
+  //Request device logs
   server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/logs.txt", "text/plain", false);
   });
 
+  //Request config json doc
   server.on("/device/config", HTTP_GET, [](AsyncWebServerRequest *request) {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     StaticJsonDocument<CONFIG_DOC_SIZE> doc = loadConfiguration();  
@@ -636,6 +642,7 @@ void setupRoutes() {
     request->send(response);
   });
 
+  //Set device configuration
   server.on("/config", HTTP_POST, [](AsyncWebServerRequest *request) {
 
   }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
@@ -680,12 +687,13 @@ void setupRoutes() {
     }
   });
 
+  //Request css document
   server.on("/styles.css", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/styles.css","text/css");
   });
 
+  //Perform a wifi AP scan
   server.on("/api/wifi/scan", HTTP_GET, [](AsyncWebServerRequest *request){
-    //Init a wifi network scan. 
     int networkCount = WiFi.scanNetworks();
     
     StaticJsonDocument<1000> doc;
@@ -725,7 +733,7 @@ void setupRoutes() {
     request->send(200, "application/json", jsonString);
   });
 
-
+  //Set the system clock. 
   server.on("/clock", HTTP_PUT, [](AsyncWebServerRequest *request) {
 
   }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
@@ -740,20 +748,28 @@ void setupRoutes() {
   });
 
 
+  //Get system clock time.
   server.on("/clock", HTTP_GET, handleGetTime);
 
+  //Get device identity
   server.on("/identity", HTTP_GET, handleIdentity);
 
+  //Get device location
   server.on("/location", HTTP_GET, handleGetLocation);
 
+  //Set device location
   server.on("/location", HTTP_POST, handleSetLocation);
 
+  //Get device capabilities
   server.on("/capabilities", HTTP_GET, handleGetCapabilities);
 
+  //Perform a soft reset
   server.on("/reset/soft", HTTP_POST, handleSoftReset);
 
+  //Perform a factory reset
   server.on("/reset/hard", HTTP_POST, handleFactoryReset);
 
+  //Global 404 handler
   server.onNotFound([](AsyncWebServerRequest *request){
     String url = request->url();
     Serial.printf("404 Not Found: %s\n", url.c_str());
@@ -804,6 +820,7 @@ void setup() {
   }
   else 
   {
+    logEvent("RTC init.");
     isRTCAvailable = true;
   }
 
@@ -812,7 +829,7 @@ void setup() {
   } 
   else 
   {
-    Serial.println("Listing files...");
+    logEvent("LittleFS mount successful.");
     listSPIFFSFiles();
   }
 
@@ -841,6 +858,7 @@ void setup() {
     // Always configure routes before server.begin()
     setupRoutes();
 
+    //Update the status LED blink speed
     setBlinkSpeed(3);
 
     logEvent("Initializing AP mode.");
