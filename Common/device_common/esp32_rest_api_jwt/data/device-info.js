@@ -59,7 +59,7 @@ class DeviceInfoManager {
         try {
             this.showStatus('Loading device information...', 'info');
             
-            const response = await fetch(`${this.apiBase}/device/info`);
+            const response = await fetch(`${this.apiBase}/device/config`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -81,12 +81,11 @@ class DeviceInfoManager {
         document.getElementById('macAddress').textContent = data.macAddress || 'Unknown';
         document.getElementById('firmwareVersion').textContent = data.firmwareVersion || 'Unknown';
         document.getElementById('uptime').textContent = this.formatUptime(data.uptime);
-        document.getElementById('wifiStatus').textContent = data.wifiStatus || 'Unknown';
         document.getElementById('ipAddress').textContent = data.ipAddress || 'Not connected';
     }
 
     setLoadingState() {
-        const fields = ['deviceName', 'macAddress', 'firmwareVersion', 'uptime', 'wifiStatus', 'ipAddress'];
+        const fields = ['deviceName', 'macAddress', 'firmwareVersion', 'uptime', 'ipAddress'];
         fields.forEach(field => {
             document.getElementById(field).textContent = 'Loading...';
         });

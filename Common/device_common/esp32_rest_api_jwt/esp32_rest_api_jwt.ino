@@ -14,6 +14,7 @@
 #include <ArduinoMqttClient.h>
 #include <ezButton.h>
 #include <RTClib.h>
+#include "esp_timer.h"
 
 #define CONFIG_DOC_SIZE 1000
 #define MAX_LOG_FILE_SIZE 10000
@@ -496,6 +497,10 @@ StaticJsonDocument<CONFIG_DOC_SIZE> createNullConfigDocument() {
 StaticJsonDocument<CONFIG_DOC_SIZE> loadConfiguration(){
   StaticJsonDocument<CONFIG_DOC_SIZE> doc;
   
+  int64_t uptimeInSeconds = esp_timer_get_time() / 1000000;
+  char uptimeBuffer[32];
+  snprintf(uptimeBuffer, sizeof(uptimeBuffer), "%lld", uptimeInSeconds);
+
   prefs.begin("esp32-config", true);
 
   doc["deviceName"] = decryptAES(prefs.getString("deviceName", ""));
@@ -503,8 +508,12 @@ StaticJsonDocument<CONFIG_DOC_SIZE> loadConfiguration(){
   doc["ssid"]      = decryptAES(prefs.getString("wifiSsid", ""));
   doc["password"]   = decryptAES(prefs.getString("wifiPassword", ""));
   doc["bootAttempts"] = decryptAES(String(prefs.getInt("bootAttempts", 0)));
-  doc["ssidConnectionAttempts"] = decryptAES(String(prefs.getInt("ssidConnectionAttempts", 0)));
+  doc["connectAttempts"] = decryptAES(String(prefs.getInt("connectAttempts", 0)));
   doc["lastBootMode"] = decryptAES(prefs.getString("lastBootMode", ""));
+  doc["ipAddress"] = WiFi.localIP();
+  doc["macAddress"] = WiFi.softAPmacAddress();  //This only works in AP mode.
+  doc["uptime"] = uptimeBuffer;
+  doc["firmwareVersion"] = BASE_FIRMWARE_DESCRIPTION;
   prefs.end();
   return doc;
 }
@@ -564,6 +573,39 @@ bool saveConfiguration(StaticJsonDocument<CONFIG_DOC_SIZE> doc){
   return true;
 }
 
+void listSPIFFSFiles() {
+  Serial.println("\n--- Listing SPIFFS Files ---");
+  
+  // Open the root directory
+  File root = LittleFS.open("/");
+  if (!root) {
+    Serial.println("- Failed to open directory");
+    return;
+  }
+  if (!root.isDirectory()) {
+    Serial.println("- Not a directory");
+    return;
+  }
+
+  // Iterate over all files
+  File file = root.openNextFile();
+  int fileCount = 0;
+  
+  while (file) {
+    Serial.print("FILE: ");
+    Serial.print(file.name());
+    Serial.print("\tSIZE: ");
+    Serial.print(file.size());
+    Serial.println(" bytes");
+    
+    fileCount++;
+    file = root.openNextFile(); // Move to the next file
+  }
+  
+  Serial.printf("Total files found: %d\n", fileCount);
+  Serial.println("---------------------------\n");
+}
+
 // ===================== Routes Setup =====================
 void setupRoutes() {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -584,6 +626,14 @@ void setupRoutes() {
 
   server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/logs.txt", "text/plain", false);
+  });
+
+  server.on("/device/config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    StaticJsonDocument<CONFIG_DOC_SIZE> doc = loadConfiguration();  
+
+    serializeJson(doc, *response);
+    request->send(response);
   });
 
   server.on("/config", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -759,6 +809,11 @@ void setup() {
 
   if (!LittleFS.begin(true)) {
    logEvent("[ERROR] LittleFS mount failed");
+  } 
+  else 
+  {
+    Serial.println("Listing files...");
+    listSPIFFSFiles();
   }
 
   logEvent("Checking configuration settings.");
@@ -789,11 +844,17 @@ void setup() {
     setBlinkSpeed(3);
 
     logEvent("Initializing AP mode.");
-    wifiMacAddress = WiFi.macAddress();
-    String apSsid = String(AP_HUB_NAME_PREFIX) + wifiMacAddress;
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(apSsid.c_str(), fallbackApPassword);
 
+    //Wait for 1 second to let the AP hardware finish initializing so we can 
+    //get the MAC address.
+    delay(1000);
+
+    String macAddress = WiFi.softAPmacAddress();
+    String apSsid = String("ZANNDTECH_CFG " + macAddress);
+
+    WiFi.softAP(apSsid.c_str(), fallbackApPassword);
+    
     logEvent("Starting AP webserver.");
     server.begin();
   } 
